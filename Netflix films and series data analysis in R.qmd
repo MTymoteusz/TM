@@ -1,0 +1,598 @@
+---
+title: "Netflix Shows and Movies"
+format:
+  pdf:
+    latex-auto-install: true
+editor: visual
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Wstęp
+
+Celem analizy jest zrozumienie struktury i zróżnicowania oferty Netflixa w kontekście różnych zmiennych, takich jak gatunki, kraj produkcji, klasyfikacja wiekowa, rok wydania, i długość trwania. W szczególności, badamy, jak te zmienne wpływają na dostępność treści na platformie.
+
+W analizie skupimy się na zrozumieniu, jakie typy treści dominują na Netflixie, w jaki sposób różnią się filmy od seriali oraz jak zmieniała się dostępna biblioteka na przestrzeni lat. Dodatkowo przyjrzymy się temu, jak takie czynniki jak kraj produkcji (Country), gatunek (Listed_in) czy klasyfikacja wiekowa (Rating) wpływają na charakter dostępnych treści i ich długość.
+
+Nasze badanie opiera się na danych zebranych w katalogu Netflixa, udostępnionych publicznie za pośrednictwem platformy Kaggle. Zestaw danych został pozyskany metodą web scrapingu z oficjalnej bazy Netflixa. Analiza tych informacji umożliwia identyfikację kluczowych wzorców i trendów w ofercie platformy — co może być użyteczne zarówno dla badaczy zajmujących się mediami, jak i dla użytkowników zainteresowanych strukturą treści streamingowych.
+
+## Pochodzenie i licencja danych
+
+Dane wykorzystane w projekcie pochodzą z publicznie dostępnego zbioru „Netflix Movies and TV Shows”, który został udostępniony na platformie Kaggle pod adresem: https://www.kaggle.com/datasets/shivamb/netflix-shows na podstawie informacji pozyskanych metodą web scrapingu z katalogu Netflixa. Zbiór danych zawiera metadane dotyczące filmów i seriali dostępnych na platformie, takie jak tytuł, gatunek, kraj produkcji, klasyfikacja wiekowa czy rok wydania. Autor datasetu dokonał przetworzenia pozyskanych danych, ujednolicając formaty zmiennych oraz scalając je w jedną strukturę.
+
+Dataset nie posiada formalnie określonej licencji typu open-source. Ponieważ pierwotne informacje zostały zebrane z publicznej bazy Netflixa, ich wykorzystanie jest dopuszczalne w celach edukacyjnych i analitycznych, natomiast w zastosowaniach komercyjnych wymaga zachowania ostrożności oraz weryfikacji zgodności z zasadami dotyczącymi przetwarzania danych katalogowych Netflixa.
+
+### **Opis zmiennych**
+
+1.  Dane, które analizujemy, obejmują różnorodne aspekty dotyczące filmów i seriali dostępnych na platformie Netflix. Uwzględniają one cechy opisujące treści, metadane produkcyjne oraz informacje o gatunku, klasyfikacji wiekowej, czasie trwania i kraju pochodzenia. Poniżej przedstawiamy szczegółowy opis zmiennych dostępnych w zbiorze danych:
+
+#### **1. Cechy opisujące treści (Content Characteristics)**
+
+-   **Type (typ treści)** – określa, czy dana pozycja jest filmem („Movie”) czy serialem („TV Show”).
+
+-   **Title (tytuł)** – oficjalny tytuł produkcji dostępnej na platformie Netflix.
+
+-   **Rating (klasyfikacja wiekowa)** – oznaczenie określające minimalny wiek odbiorcy, np. „TV-MA”, „TV-14”, „PG-13”, „R”.
+
+-   **Release Year (rok premiery)** – rok, w którym produkcja została wydana.
+
+-   **Duration (czas trwania)** – długość filmu podana w minutach lub liczba sezonów w przypadku seriali.
+
+-   **Listed In (gatunek/kategoria treści)** – gatunek lub kategoria przypisana przez Netflix, np. „Dramas”, „Comedies”, „Action & Adventure”.
+
+#### **2. Metadane produkcyjne (Production Metadata)**
+
+-   **Director (reżyser)** – nazwisko reżysera odpowiedzialnego za produkcję.
+
+-   **Cast (obsada)** – lista aktorów i aktorek występujących w produkcji.
+
+-   **Country (kraj produkcji)** – kraj lub kraje, w których produkcja została zrealizowana.
+
+-   **Date Added (data dodania na platformę)** – data, w której treść została dodana do katalogu Netflixa.
+
+-   **Description (opis)** – krótki opis fabuły lub charakterystyki treści.
+
+#### **3. Identyfikacja i metadane techniczne (Record Metadata)**
+
+-   **Show ID (identyfikator)** – unikalny identyfikator przypisany każdej pozycji w zbiorze danych.
+
+W naszym sprawozdaniu skupimy się na analizie czynników wpływających na strukturę i zróżnicowanie treści dostępnych na platformie Netflix. W szczególności postaramy się odpowiedzieć na następujące **pytania badawcze**:
+
+-   Jak liczba seriali i filmów na Netflixie zmieniała się w zależności od roku produkcji?
+
+-   W jaki sposób kraj produkcji oraz gatunek wpływają na charakter treści — w szczególności na ich długość oraz klasyfikację wiekową?
+
+-   Do jakich grup wiekowych kierowane są najliczniej reprezentowane gatunki w katalogu Netflix?
+
+```{r}
+#| include: false
+# Wczytane pakiety
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(janitor)
+```
+
+```{r}
+#| echo: false
+# Wczytane dane 
+data <- read.csv("netflix_titles.csv", stringsAsFactors = FALSE)
+data <- clean_names(data)
+```
+
+```{r}
+#| echo: false
+clean_data <- data %>%
+  separate_rows(country, sep = ", ") %>%
+  separate_rows(listed_in, sep = ", ") %>%
+  mutate(country = str_remove(country, ",$")) %>%
+  mutate(country = replace(country, country == "", "Unknown"))
+```
+
+```{r}
+#| echo: false
+movies <- clean_data %>%
+  filter(type == "Movie") %>%
+  mutate(duration = as.numeric(gsub(" min", "", duration, fixed = TRUE))) %>%
+  rename(duration_minutes = duration)
+
+shows_data <- clean_data %>%
+  filter(type == "TV Show") %>%
+  mutate(duration = as.numeric(str_remove(duration, " Seasons?"))) %>%
+  rename(duration_seasons = duration)
+
+countries_with_over_ten_movies <- movies %>%
+  count(country) %>%
+  filter(n > 10)
+
+```
+
+## Analiza danych
+
+W niniejszej sekcji poddamy szczegółowej weryfikacji zasoby katalogu platformy Netflix, koncentrując się na identyfikacji kluczowych trendów oraz zależności kształtujących współczesną ofertę serwisu. Głównym celem analizy jest zrozumienie, w jaki sposób czynniki czasowe, geograficzne oraz gatunkowe wpływają na strukturę dostępnych treści. Proces badawczy został ustrukturyzowany wokół trzech głównych problemów. W pierwszej kolejności zbadamy dynamikę rozwoju biblioteki poprzez analizę ewolucji liczby dostępnych filmów i seriali w odniesieniu do roku ich produkcji, co pozwoli na wskazanie momentów przełomowych w strategii pozyskiwania treści. Następnie przejdziemy do weryfikacji uwarunkowań charakterystyki produkcji, badając wpływ kraju pochodzenia oraz gatunku na parametry fizyczne, takie jak czas trwania oraz przypisane klasyfikacje wiekowe, co umożliwi zdefiniowanie regionalnych i gatunkowych standardów. Całość analizy zwieńczy profilowanie grup docelowych poprzez zestawienie najliczniej reprezentowanych gatunków z ich kategoriami ratingowymi. Takie podejście pozwoli określić, dla jakich grup wiekowych Netflix buduje swoje najmocniejsze filary tematyczne, oraz nakreśli pełny obraz strategii programowej serwisu, odpowiadającej na zróżnicowane potrzeby globalnej widowni.
+
+### Jak liczba seriali i filmów na Netflixie zmieniała się w zależności od roku produkcji?
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+library(knitr)
+library(kableExtra)
+
+# 1. Przygotowanie danych (Twoja logika)
+movies_by_country <- clean_data %>%
+  filter(type == "Movie") %>%
+  group_by(country, release_year) %>%
+  summarise(num_movies = n(), .groups = 'drop')
+
+shows_by_country <- clean_data %>%
+  filter(type == "TV Show") %>%
+  group_by(country, release_year) %>%
+  summarise(num_shows = n(), .groups = 'drop')
+
+# 2. Łączenie i sortowanie (Twoje nazewnictwo)
+combined_data <- full_join(movies_by_country, shows_by_country, 
+                           by = c("country", "release_year")) %>%
+  arrange(desc(num_movies)) %>%  
+  head(25) %>%
+  arrange(release_year)
+
+# 3. Tworzenie ładnej tabeli
+combined_data %>%
+  rename(
+    "Kraj" = country,
+    "Rok wydania" = release_year,
+    "Liczba filmów" = num_movies,
+    "Liczba seriali" = num_shows
+  ) %>%
+  kable(caption = "Zestawienie produkcji Netflix według kraju i roku (Top 25 rekordów)") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    latex_options = "hold_position",
+    full_width = F
+  ) %>%
+  column_spec(1, bold = T, color = "#87CEEB") # Wyróżnienie kolumny z krajem
+```
+
+Wykresy przedstawiają liczbę filmów i seriali na Netflixie w zależności od roku produkcji, z podziałem na regiony: Azja, Europa, Ameryka Północna, Ameryka Południowa oraz Inne.
+
+Azja obejmuje kraje takie jak Japonia, Chiny, Indie, Korea Południowa oraz Filipiny. W regionie Europy znajdują się Niemcy, Francja, Wielka Brytania, Włochy oraz Hiszpania. Ameryka Północna to głównie Stany Zjednoczone, Kanada i Meksyk. Ameryka Południowa to Brazylia, Argentyna, Kolumbia oraz Chile. Region Inne obejmuje kraje takie jak Australia, Nowa Zelandia, Rosja, Jordania i Zjednoczone Emiraty Arabskie.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# 1. Przygotowanie danych
+movies_by_year_country <- movies %>%
+  group_by(country, release_year) %>%  
+  summarise(num_movies = n(), .groups = 'drop')
+
+# 2. Poprawiona klasyfikacja - dopisałem kraje, które często występują w danych Netflixa
+movies_by_year_country <- movies_by_year_country %>%
+  mutate(region = case_when(
+    country %in% c("United States", "Canada", "Mexico") ~ "Ameryka Północna",
+    country %in% c("Brazil", "Argentina", "Colombia", "Chile") ~ "Ameryka Południowa",
+    country %in% c("Germany", "France", "Italy", "United Kingdom", "Spain", "Poland") ~ "Europa",
+    country %in% c("Japan", "South Korea", "China", "India", "Thailand") ~ "Azja",
+    TRUE ~ "Inne"  # Wszystkie pozostałe wpadają tutaj
+  ))
+
+# 3. Ręczne ustawienie kolorów (Inne ma być skyblue)
+moje_kolory <- c(
+  "Ameryka Północna" = "#FF69B4", 
+  "Ameryka Południowa" = "#27ae60", 
+  "Europa" = "#e67e22", 
+  "Azja" = "#8e44ad", 
+  "Inne" = "#87CEEB"
+)
+
+# 4. Wykres
+ggplot(movies_by_year_country, aes(x = release_year, y = num_movies, fill = region)) +
+  geom_col(width = 0.8, color = "white", linewidth = 0.1) + 
+  scale_fill_manual(values = moje_kolory) +
+  # Skupiamy się na latach 1990-2021 dla lepszej czytelności
+  scale_x_continuous(limits = c(1990, 2022), breaks = seq(1990, 2020, by = 5)) +
+  theme_minimal(base_size = 11) +
+  labs(
+    title = "Liczba filmów na Netflixie w zależności od roku produkcji",
+    x = "Rok produkcji",
+    y = "Liczba filmów",
+    fill = "Region świata"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+```
+
+Z wykresu wynika, że liczba filmów produkowanych na Netflixie była stosunkowo niewielka do lat 2000, a od tego okresu nastąpił znaczący wzrost. W szczególności, od około 2010 roku, liczba produkcji zaczęła gwałtownie rosnąć, z dominującą produkcją filmów w Ameryce Północnej. Europa i Azja zaczęły zwiększać swoją produkcję filmową w ostatnich latach, osiągając wyraźny wzrost w 2020 roku. Natomiast Ameryka Południowa pozostaje regionem, w którym produkcja filmów wciąż jest mniejsza w porównaniu do innych regionów.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# 1. Przygotowanie danych dla seriali i regionów
+shows_by_year_country <- shows_data %>%
+  group_by(country, release_year) %>%
+  summarise(num_shows = n(), .groups = 'drop') %>%
+  mutate(region = case_when(
+    country %in% c("United States", "Canada", "Mexico") ~ "Ameryka Północna",
+    country %in% c("Brazil", "Argentina", "Colombia") ~ "Ameryka Południowa",
+    country %in% c("Germany", "France", "Italy", "United Kingdom", "Spain") ~ "Europa",
+    country %in% c("Japan", "South Korea", "China", "India") ~ "Azja",
+    TRUE ~ "Inne"
+  ))
+
+# 2. Definiowanie tych samych kolorów (Inne = skyblue)
+moje_kolory <- c(
+  "Ameryka Północna" = "hotpink", 
+  "Ameryka Południowa" = "#27ae60", 
+  "Europa" = "#e67e22", 
+  "Azja" = "#8e44ad", 
+  "Inne" = "#87CEEB"
+)
+
+# 3. Wykres w identycznym stylu
+ggplot(shows_by_year_country, aes(x = release_year, y = num_shows, fill = region)) +
+  geom_col(width = 0.8, color = "white", linewidth = 0.1) + 
+  # Oś X dopasowana do seriali (większość jest po 2000 roku)
+  scale_x_continuous(limits = c(1995, 2022), breaks = seq(1995, 2020, by = 5)) +
+  scale_fill_manual(values = moje_kolory) +
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "Liczba seriali na Netflixie w zależności od roku produkcji",
+    x = "Rok produkcji",
+    y = "Liczba seriali"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
+    legend.position = "none", # Usunięcie napisu "region" i legendy
+    # Solidne, ciągłe linie siatki
+    panel.grid.major.x = element_line(color = "gray90", linetype = "solid"),
+    panel.grid.major.y = element_line(color = "gray90", linetype = "solid"),
+    panel.grid.minor = element_blank()
+  )
+```
+
+Widać, że produkcja seriali na Netflixie zaczęła gwałtownie rosnąć po roku 2000, z wyraźnym wzrostem liczby seriali w latach 2010-2020. W szczególności, Ameryka Północna (zdominowana przez USA) była głównym producentem seriali przez cały okres, szczególnie od 2010 roku. W ostatnich latach obserwujemy także znaczny wzrost produkcji seriali w Europie i Azji, choć liczba seriali w tych regionach wciąż pozostaje mniejsza niż w Ameryce Północnej. Ameryka Południowa oraz regiony inne pozostają zdominowane przez mniejszą liczbę produkcji seriali w porównaniu do innych obszarów, ale ich liczba stopniowo rośnie w ostatnich latach.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# 1. Przygotowanie danych (Twoja logika)
+combined_data <- clean_data %>%
+  filter(type %in% c("Movie", "TV Show")) %>%
+  group_by(type, release_year) %>%
+  summarise(num_items = n(), .groups = 'drop') %>%
+  arrange(release_year)
+
+# 2. Nowoczesny wykres bąbelkowy
+ggplot(combined_data, aes(x = release_year, y = num_items, size = num_items, fill = type)) +
+  # Używamy shape = 21, aby kropki miały wypełnienie i obramowanie
+  geom_point(alpha = 0.6, shape = 21, color = "white", stroke = 0.5) + 
+  # Skala kolorów (Twoje kolory, ale w ładniejszych odcieniach)
+  scale_fill_manual(values = c("Movie" = "#87CEEB", "TV Show" = "#FF69B4")) +
+  # Dopasowanie wielkości bąbelków
+  scale_size_continuous(range = c(2, 12), guide = "none") + 
+  # Oś X: pokazujemy lata co 5 lat dla większej przejrzystości
+  scale_x_continuous(limits = c(1990, 2022), breaks = seq(1990, 2020, by = 5)) +
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "Dynamika wzrostu liczby filmów i seriali",
+    subtitle = "Wielkość bąbelka odpowiada liczbie produkcji wydanych w danym roku",
+    x = "Rok produkcji",
+    y = "Liczba tytułów",
+    fill = "Typ produkcji"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "gray40", size = 10),
+    legend.position = "bottom",
+    # Ciągłe i czyste linie siatki
+    panel.grid.major = element_line(color = "gray90", linetype = "solid"),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 0) # Poziome daty są czytelniejsze
+  )
+```
+
+Wykres ilustruje zmiany w liczbie filmów i seriali na Netflixie w zależności od roku produkcji. Na osi X widzimy rok produkcji, natomiast na osi Y przedstawiona jest liczba produkcji w danym roku. Wykres pokazuje dynamiczny wzrost liczby filmów i seriali, szczególnie od około 2000 roku, z wyraźnym przyspieszeniem w latach 2010-2020. Widać również, że liczba seriali zaczęła rosnąć w podobnym tempie co filmy w tym samym okresie, przy czym produkcja filmów nadal pozostaje na wyższym poziomie. Na wykresie zauważamy, że w okresie do lat 90-tych produkcja była minimalna, natomiast w 2000 roku rozpoczął się gwałtowny wzrost liczby produkcji filmów i seriali, który wciąż trwa. W 2020 roku widać najwyższy punkt wykresu, gdzie liczba produkcji osiągnęła wartości rzędu kilku tysięcy.
+
+Na podstawie wykresu możemy stwierdzić, że liczba filmów i seriali na Netflixie rosła w sposób skokowy od początku XXI wieku. W szczególności w latach 2000-2010 liczba produkcji (zarówno filmów, jak i seriali) zaczęła gwałtownie rosnąć, co wskazuje na intensywny rozwój platformy. W okresie 2010-2020 liczba produkcji filmów i seriali wzrosła szczególnie dynamicznie, co może być wynikiem intensyfikacji inwestycji Netflixa w oryginalne treści. Seriali przybywało w takim samym tempie jak filmów, a wzrost ten stał się bardziej wyraźny po 2015 roku.
+
+Ponadto, wykres wskazuje, że Ameryka Północna (szczególnie USA) nadal pozostaje głównym regionem, w którym produkowane są filmy i seriale, ale w ostatnich latach inne regiony, takie jak Europa i Azja, zaczęły znacząco zwiększać swoją produkcję. W 2020 roku zauważalny jest trend globalizacji produkcji na Netflixie, w którym różne regiony zaczęły wytwarzać większą liczbę treści, odpowiadając na rosnące zapotrzebowanie międzynarodowych widzów.
+
+Podsumowując, liczba produkcji (filmów i seriali) na Netflixie znacząco wzrosła od początku XXI wieku, z dominującym trendem w latach 2010-2020, gdzie produkcja zaczęła być globalna i obejmować różne regiony na całym świecie.
+
+### W jaki sposób kraj produkcji oraz gatunek wpływają na charakter treści — w szczególności na ich długość oraz klasyfikację wiekową?
+
+Analiza wpływu kraju oraz gatunku na charakter treści zostanie przeprowadzona na podstawie statystyk z państw, w których liczba wyprodukowanych filmów lub seriali przekroczyła odpowiednio dwieście i sto. Umożliwi to dokładne przyjrzenie się trendom, eliminując przypadki odstające, takie jak państwa o minimalnej ilości produkcji.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# 1. Przygotowanie danych
+countries_with_over_twohundred_movies <- movies %>%
+  count(country) %>%
+  dplyr::filter(n > 200)
+
+plot_data <- movies %>%
+  filter(country %in% countries_with_over_twohundred_movies$country) %>%
+  group_by(country) %>%
+  summarize(avg_duration = mean(duration_minutes, na.rm = TRUE)) %>%
+  mutate(country = reorder(country, avg_duration))
+
+# 2. Tworzenie wykresu z efektem fade (gradientu)
+ggplot(plot_data, aes(x = country, y = avg_duration, fill = avg_duration)) +
+  # Słupki z gradientem
+  geom_col(color = "white", width = 0.8, show.legend = FALSE) + 
+  # Dodanie etykiet tekstowych
+  geom_text(aes(label = round(avg_duration, 1)), 
+            hjust = -0.2, size = 3.5, fontface = "bold", color = "gray20") +
+  # Ustawienie gradientu niebieskiego (od jasnego błękitu do skyblue)
+  scale_fill_gradient(low = "#e0f7fa", high = "#87CEEB") +
+  # Obrót osi
+  coord_flip() +
+  # Motyw
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "Średni czas trwania filmu w zależności od kraju",
+    subtitle = "Efekt przejścia tonalnego (fade) zakończony kolorem skyblue",
+    x = "", 
+    y = "Średnia długość (minuty)"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 15, hjust = 0),
+    plot.subtitle = element_text(color = "gray40", size = 10, margin = margin(b = 15)),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", linetype = "solid"),
+    axis.text.y = element_text(face = "bold")
+  )
+```
+
+Wykres przedstawia ranking 17 krajów (oraz kategorii "Unknown", odpowiadającej za wszystkie kraje, których pochodzenie nie jest znane) pod kątem średniej średniej długości produkcji.
+
+Wyraźnym liderem rankingu są Indie, gdzie średni czas trwania filmu przekracza dwie godziny. Jest to charakterystyczne dla przemysłu filmowego w Indiach (np. Bollywood), gdzie produkcje są tradycyjne dłuższe i często zawierają liczne numery muzyczne oraz rozbudowaną strukturę narracyjną.
+
+Większość analizowanych krajów mieści się w przedziale 100-110 minut. Kraje europejskie, jak Niemcy, Hiszpania, Wielka Brytania i Francja, oscylują wokół 101-104 minut, co odpowiada klasycznemu standardowi pełnometrażowego filmu kinowego.
+
+Co ciekawe, mimo dominacji Hollywood, średnia długość filmu wyprodukowanego w Stanach Zjednoczonych jest niższa niż w wielu krajach azjatyckich czy afrykańskich. Może to wynikać z dużej liczby produkcji gatunkowych (np. horrory, komedie), które często trwają krócej niż epickie dramaty.
+
+Aby znaleźć potwierdzenie dla naszej tezy, możemy przyjrzeć się dokładniej kolumnie "listed_in", która opisuje, w jaki sposób klasyfikowana jest dana produkcja.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+library(knitr)
+library(kableExtra)
+
+# 1. Przygotowanie danych (Twoja logika)
+most_popular_movie_genre <- movies %>%
+  filter(country %in% c("United States", "India")) %>%
+  group_by(country, listed_in) %>%
+  count(listed_in) %>%
+  rename(amount_of_movies = n) %>%
+  group_by(country) %>%
+  slice_max(amount_of_movies, n = 3) %>%
+  ungroup()
+
+# 2. Wyświetlenie ładnej tabeli
+most_popular_movie_genre %>%
+  rename(
+    "Kraj" = country,
+    "Gatunek" = listed_in,
+    "Liczba filmów" = amount_of_movies
+  ) %>%
+  kable(caption = "Top 3 najpopularniejsze gatunki filmowe w USA i Indiach") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    latex_options = "hold_position",
+    full_width = F
+  ) %>%
+  # Grupowanie wierszy po kraju dla lepszej czytelności
+  collapse_rows(columns = 1, valign = "top") %>%
+  column_spec(1, bold = T, color = "black")
+```
+
+Po wyodrębnieniu trzech najczęściej produkowanych gatunków filmowych Stanów Zjednoczonych oraz Indii zauważamy, że nasza teza była prawdziwa. Przeważającą część produkcji filmowych Bollywood stanowią filmy międzynarodowe, natomiast Hollywood specjalizuje się w produkcji dramatów i komedii, stąd bierze się dysproporcja w czasie trwania filmów tego pochodzenia.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# 1. Przygotowanie danych (Twoja logika)
+countries_with_over_hundred_shows <- shows_data %>%
+  count(country) %>%
+  filter(n > 100)
+
+plot_data_shows <- shows_data %>%
+  filter(country %in% countries_with_over_hundred_shows$country) %>%
+  group_by(country) %>%
+  summarize(avg_duration = mean(duration_seasons, na.rm = TRUE)) %>%
+  mutate(country = reorder(country, avg_duration))
+
+# 2. Tworzenie wykresu z efektem fade (gradient hotpink)
+ggplot(plot_data_shows, aes(x = country, y = avg_duration, fill = avg_duration)) +
+  # Słupki z gradientem i delikatnym obramowaniem
+  geom_col(show.legend = FALSE, color = "white", linewidth = 0.2, width = 0.8) + 
+  # Dodanie etykiet tekstowych (liczba sezonów)
+  geom_text(aes(label = round(avg_duration, 1)), 
+            hjust = -0.3, size = 3.5, fontface = "bold", color = "gray20") +
+  # Ustawienie gradientu od jasnego różu do hotpink
+  scale_fill_gradient(low = "#fff0f5", high = "#FF69B4") +
+  # Obrót osi dla czytelności państw
+  coord_flip() +
+  # Czysty, profesjonalny motyw
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "Średnia liczba sezonów serialu w zależności od kraju",
+    subtitle = "Efekt przejścia tonalnego (fade) zakończony kolorem hotpink",
+    x = "", 
+    y = "Średnia liczba sezonów"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", size = 15, hjust = 0),
+    plot.subtitle = element_text(color = "gray40", size = 10, margin = margin(b = 15)),
+    panel.grid.major.y = element_blank(), # Usunięcie linii poziomych
+    panel.grid.major.x = element_line(color = "gray90", linetype = "solid"),
+    axis.text.y = element_text(face = "bold"),
+    plot.margin = margin(10, 20, 10, 10)
+  )
+
+```
+
+Wykres analizuje trwałość i długość serii telewizyjnych (seriali) w podziale na 14 krajów. W przeciwieństwie do filmów, gdzie liderem były Indie, w przypadku seriali struktura rankingu wygląda zupełnie inaczej, co sugeruje odmienne modele produkcji telewizyjnej w różnych regionach świata.
+
+Kanada jest bezdyskusyjnym liderem zestawienia. Średnia 3 sezonów sugeruje, że kanadyjskie produkcje mają największą szansę na kontynuację. Może to wynikać z silnej bazy produkcji dla dzieci oraz seriali dokumentalnych, które często doczekują się wielu serii.
+
+USA zajmuje drugie miejsce. Wynik powyżej dwóch sezonów odzwierciedla dojrzały rynek komercyjny, gdzie popularne tytuły są zamawiane na kolejne lata, by zmaksymalizować zyski z reklam i subskrypcji.
+
+W dolnej części rankingu widzimy interesujące zjawisko. Choć Indie i Chiny to kraje, które produkują bardzo długie filmy, ich seriale są zazwyczaj krótkie. Często przybierają formę zamkniętych historii (telenoweli lub mini-serii), które nie są planowane na wiele lat.
+
+Zamyka ranking z idealną średnią jednego sezonu, co sugeruje, że niemal każda produkcja z tego kraju jest pomyślana jako zamknięta, jednorazowa opowieść.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# 1. Wybieramy 10 krajów z największą liczbą filmów
+top_10_countries <- movies %>%
+  count(country, sort = TRUE) %>%
+  slice_head(n = 10) %>%
+  pull(country)
+
+# 2. Przygotowanie danych i wykres pudełkowy (boxplot)
+movies %>%
+  filter(country %in% top_10_countries) %>%
+  ggplot(aes(x = reorder(country, duration_minutes, median), 
+             y = duration_minutes, 
+             fill = country)) +
+  # Wykres pudełkowy
+  geom_boxplot(alpha = 0.6, outlier.color = "#87CEEB", outlier.shape = 1) +
+  # Dodanie punktów (jitter), aby pokazać zagęszczenie filmów (styl z Twojego przykładu)
+  geom_jitter(width = 0.2, alpha = 0.1, size = 0.5) +
+  # Obrócenie wykresu dla lepszej czytelności
+  coord_flip() +
+  # Estetyka (białe tło)
+  theme_minimal() +
+  labs(
+    title = "Rozkład długości filmów dla TOP 10 krajów",
+    subtitle = "Linia wewnątrz pudełka to mediana, a kropki to filmy o nietypowej długości",
+    x = "Kraj produkcji",
+    y = "Długość filmu (minuty)"
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 14)
+  )
+```
+
+Wykres pudełkowy (boxplot) ukazuje, że średni czas trwania filmu na platformie wynosi około 100 minut, jednak poszczególne rynki produkcyjne wykazują pod tym względem unikalne cechy. Wyraźnym liderem są Indie, gdzie mediana oraz rozkład większości danych są przesunięte w stronę wartości wyższych niż 120 minut, co wynika ze specyfiki lokalnego przemysłu filmowego. W krajach takich jak USA czy Wielka Brytania rozkład jest bardziej skoncentrowany wokół standardu 100 minut, choć występuje tam duża liczba wartości odstających, reprezentujących zarówno bardzo krótkie filmy, jak i wyjątkowo długie produkcje. Analiza ta potwierdza, że choć większość światowej produkcji trzyma się zbliżonych ram czasowych, to tradycje kulturowe oraz zróżnicowanie gatunkowe znacząco wpływają na ostateczną długość treści w katalogu.
+
+Analiza średniej długości produkcji oraz ich rozkładu wykazuje wyraźne różnice między światowymi rynkami oraz typami treści. Wykres słupkowy z efektem przejścia tonalnego (fade) w kolorze **skyblue** potwierdza dominację Indii pod względem długości filmów, gdzie średni czas trwania przekracza 120 minut, podczas gdy standard zachodni oscyluje wokół 100 minut. Uzupełniający go **boxplot** (wykres pudełkowy) pogłębia te obserwacje, wskazując na dużą stabilność formatową w Kanadzie oraz ogromne zróżnicowanie w USA, gdzie obok standardowych produkcji występuje wiele tytułów o skrajnie krótkim lub długim metrażu. Z kolei wykres dotyczący seriali, wyróżniony kolorem **hotpink**, rzuca światło na zupełnie inną dynamikę – tutaj liderem jest Kanada ze średnią 3 sezonów, co kontrastuje z rynkami azjatyckimi (Indie, Chiny), gdzie seriale są zazwyczaj pomyślane jako krótkie, zamknięte formy. Całość tych danych wskazuje, że Netflix skutecznie różnicuje swoją ofertę, dostosowując parametry techniczne treści do lokalnych tradycji produkcyjnych i preferencji widzów w różnych regionach świata.
+
+### Do jakich grup wiekowych kierowane są najliczniej reprezentowane gatunki w katalogu Netflix?
+
+```{r}
+#| echo: false
+# Oczyszczamy dane z brakujących wartości w kolumnie 'rating'
+movies_data_clean <- clean_data %>%
+  filter(type == "Movie") %>%  # Filtrowanie tylko filmów
+  separate_rows(listed_in, sep = ", ") %>%  # Rozdzielanie gatunków
+  filter(!is.na(rating))  # Usuwamy wiersze z brakującymi wartościami w rating
+
+```
+
+```{r}
+#| echo: false
+
+# 2. Wybranie TOP 10 najpopularniejszych gatunków (używając Twojej logiki)
+top_genres <- clean_data %>%
+  separate_rows(listed_in, sep = ", ") %>%
+  count(listed_in, sort = TRUE) %>%
+  slice_head(n = 10) %>%
+  pull(listed_in)
+
+# 3. Przygotowanie danych do wykresu (zliczanie produkcji dla pary Gatunek-Rating)
+wykres_dane <- clean_data %>%
+  separate_rows(listed_in, sep = ", ") %>%
+  filter(listed_in %in% top_genres) %>%
+  count(listed_in, rating) %>%
+  filter(rating != "" & !is.na(rating)) # Usunięcie pustych ocen
+
+# 4. Prosty wykres bąbelkowy (białe tło, normalne podpisy)
+ggplot(wykres_dane, aes(x = rating, y = listed_in, color = listed_in)) +
+  geom_point(size = 12, alpha = 0.5) + # Stała wielkość bąbelków (kulek)
+  geom_text(aes(label = n), color = "black", size = 3) + # Liczba produkcji w środku
+  theme_minimal() + # Białe, czyste tło
+  labs(
+    title = "Top 10 Gatunków: Rating vs Popularność",
+    x = "Rating (Klasyfikacja wiekowa)",
+    y = "Gatunek"
+  ) +
+  theme(
+    legend.position = "none", # Ukrywamy legendę, bo gatunki są na osi Y
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+Analiza katalogu Netflix wykazuje, że parametry produkcji są ściśle powiązane z regionem pochodzenia oraz profilem widza. Podczas gdy światowa mediana długości filmu oscyluje wokół 100 minut, rynek indyjski wyróżnia się znacznie dłuższymi metrażami, co kontrastuje ze standaryzacją w Kanadzie czy USA. W segmencie seriali liderem trwałości jest Kanada (średnio 3 sezony), podczas gdy rynki azjatyckie preferują krótkie, zamknięte formy. Strategia platformy opiera się na dominacji treści dla dorosłych (TV-MA) i młodzieży (TV-14), przy jednoczesnym utrzymaniu silnego, wyspecjalizowanego segmentu dla dzieci.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+# 1. Wybranie TOP 10 najpopularniejszych gatunków
+top_genres_list <- clean_data %>%
+  separate_rows(listed_in, sep = ", ") %>%
+  count(listed_in, sort = TRUE) %>%
+  slice_head(n = 10) %>%
+  pull(listed_in)
+
+# 2. Przygotowanie danych w formacie szerokim (macierz)
+table_data <- clean_data %>%
+  separate_rows(listed_in, sep = ", ") %>%
+  filter(listed_in %in% top_genres_list) %>%
+  filter(rating != "" & !is.na(rating)) %>%
+  count(listed_in, rating) %>%
+  # Rozbicie kategorii wiekowych na kolumny
+  pivot_wider(names_from = rating, values_from = n, values_fill = 0) %>%
+  rename("Gatunek" = listed_in)
+
+# 3. Wyświetlenie tabeli
+kable(table_data, caption = "Liczba produkcji w podziale na gatunek i klasyfikację wiekową") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"), 
+    latex_options = c("hold_position", "scale_down"), # Skalowanie, by tabela zmieściła się na stronie
+    full_width = F
+  ) %>%
+  column_spec(1, bold = T, color = "#87CEEB") %>%
+  add_header_above(c(" " = 1, "Klasyfikacja wiekowa (Rating)" = ncol(table_data) - 1))
+```
+
+Tabela stanowi precyzyjne uzupełnienie wcześniejszej analizy wizualnej, prezentując dokładną liczbę produkcji dla każdego z dziesięciu najpopularniejszych gatunków w rozbiciu na wszystkie dostępne kategorie wiekowe. Zastosowanie zestawienia tabelarycznego (macierzy) w tym miejscu jest kluczowe, ponieważ pozwala na szybkie odczytanie konkretnych wartości liczbowych, które na wykresie bąbelkowym mogą być mniej czytelne przy dużym zagęszczeniu punktów. Dzięki tej formie prezentacji danych można łatwo zidentyfikować nie tylko główne trendy, jak dominacja kategorii **TV-MA** w dramatach, ale także niszowe połączenia, które stanowią mniejszą część katalogu. Tabela porządkuje złożone dane wielowymiarowe, umożliwiając bezpośrednie porównanie skali produkcji między gatunkami o zupełnie różnym przeznaczeniu wiekowym, co bezpośrednio odpowiada na pytanie o strukturę grup docelowych w najliczniejszych segmentach platformy.
+
+## Podsumowanie
+
+Realizacja celów badawczych projektu pozwoliła na sformułowanie wniosków dotyczących ewolucji i struktury katalogu platformy Netflix, wskazując na silną korelację między parametrami produkcji a regionem ich pochodzenia. Analiza dynamiki rozwoju biblioteki wykazała, że liczba dostępnych treści była minimalna do lat 90., a gwałtowny wzrost liczby produkcji nastąpił po 2000 roku, osiągając swoje apogeum w roku 2020. Choć filmy nadal stanowią liczniejszą grupę w zestawieniu, produkcja seriali rozwija się w podobnym, skokowym tempie, co jest szczególnie widoczne po 2015 roku i świadczy o intensyfikacji inwestycji w treści oryginalne.
+
+Badanie uwarunkowań charakterystyki treści pozwoliło na zdefiniowanie wyraźnych standardów regionalnych: Indie są liderem pod względem średniej długości filmu, przekraczającej 120 minut, podczas gdy rynki zachodnie oscylują wokół 100–110 minut. W segmencie seriali sytuacja wygląda inaczej – liderem trwałości serii jest Kanada ze średnią trzech sezonów, co kontrastuje z rynkami azjatyckimi preferującymi krótkie, zamknięte formy telewizyjne. Ostatni etap analizy dotyczący profilowania grup docelowych wykazał, że fundament biblioteki stanowią treści dla widzów dorosłych i młodzieży (kategorie TV-MA oraz TV-14), przy jednoczesnym utrzymaniu precyzyjnie wydzielonego segmentu dla najmłodszych widzów w ramach gatunków familijnych. Całość projektu dowodzi, że strategia Netflixa opiera się na umiejętnym balansowaniu między globalną standaryzacją a dostosowaniem formatów do lokalnych tradycji kulturowych i potrzeb zróżnicowanej widowni.
