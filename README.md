@@ -11,3 +11,10 @@ Lists of exercises, from the fourth semester of my university course related to 
 Exercises from my the course about statistical analysis. Made in python.
 ## Metody numeryczne 1-7
 Exercises from my course about numerical methods. Made in python.
+1. Accuracy in numerical calculations, calculation efficiency
+2. Systems of linear equations, determinants, inverse matrices, matrix decompositions
+3. Iterative methods for systems of linear equations
+4. Non-linear equations
+5. Interpolation
+6. Numerical differentiating and integrating
+7. Differential equations
